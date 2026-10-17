@@ -1,0 +1,11 @@
+# Local plugin 0.4.10 conversation discovery review
+
+This draft is review material only; do not merge it into the public application.
+
+Candidate source commit: a9b5b783c31230c779cbb037d381d0cd18a12d84. The eight complete source files in source/ are byte-for-byte copies of the candidate, with SHA256 values in source-hashes.json. Start with change.patch (the focused delta from the installed 0.4.9 source baseline), then inspect the complete changed sources. No private conversation evidence, local database, screenshots or unpublished integration-branch history is included.
+
+Requested behavior: use official Codex App Server APIs for metadata discovery; an explicitly selected public project/list ID is verified with project/read then passed to thread/list.projectId. Public project IDs are distinct from desktop App and board IDs. Explicit cross-directory supplementation omits cwd and projectId filters. allPages follows official opaque cursors to exhaustion, preserves archive/title/source/provider filters and deduplicates by real thread ID. Default single-page queries keep the remaining cursor. UI paging accumulates prior results, offers all remaining pages, and requires candidate membership confirmation that only fills the ID. App membership stays unverified; confirmation does not read messages or save a task binding. Existing binding checks remain unchanged.
+
+The user has accepted the complete real-data preview. Local focused verification already recovered the reported missing conversation, read five real API pages with five unique IDs, exercised duplicate metadata pages, and verified UI accumulation/confirmation without message reads or task writes. Existing three conversation tests, TypeScript and plugin build passed locally. These statements are local evidence, not evidence of tests you ran.
+
+Review implementation correctness and actual bugs only, not hypothetical defenses, style, broad refactoring or scope expansion. Do not request, retrieve or include native conversation bodies or user task data. Distinguish code inspection from any isolated verification you actually perform. Acknowledge the exact PR head you reviewed and report blockers with precise file/line references, or state that no blocking defect was found.

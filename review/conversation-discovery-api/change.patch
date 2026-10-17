@@ -1,0 +1,303 @@
+diff --git a/integrations/codex-plugin/business-tools.mjs b/integrations/codex-plugin/business-tools.mjs
+index 252888c..95db036 100644
+--- a/integrations/codex-plugin/business-tools.mjs
++++ b/integrations/codex-plugin/business-tools.mjs
+@@ -41,7 +41,7 @@ export function registerBusinessTools(mcp, { api, identifier, readOnly, write })
+     inputSchema: { issueId: identifier, version, userConfirmed: z.literal(true), threadId: z.string().uuid(), source: z.enum(["official-agent", "persisted-official-app-server"]), officialTool: z.enum(["list_threads", "read_thread", "create_thread", "fork_thread"]).optional(), workspacePath: z.string().nullable().optional(), codexProjectId: identifier.nullable().optional(), codexProjectKind: z.enum(["local", "remote"]).nullable().optional(), codexHostId: identifier.nullable().optional(), turnId: identifier.nullable().optional() }, annotations: write,
+   }, ({ issueId, ...body }) => api({ path: `${taskPath(issueId)}/binding`, method: "POST", body }));
+   mcp.registerTool("taskboard_verify_conversation", { description: "Read the user's explicitly selected existing local chat identity using the public CLI, optionally comparing the configured project directory or the specified issue's current worktree. The issue must belong to the selected project. Does not bind, resume or execute it.", inputSchema: { threadId: z.string().uuid(), projectId: identifier.optional(), issueId: identifier.optional() }, annotations: readOnly }, (body) => api({ path: "/api/local/native-sessions/verify", method: "POST", body }));
+-  mcp.registerTool("taskboard_list_conversations", { description: "At the user's request, list one page of real local interactive chat metadata across all model providers. Default scope directory exactly matches the board project's configured directory or selected issue's worktree. Explicit scope local searches all local directories, including chats whose saved cwd differs from their sidebar placement; these results are not verified members of the selected App project. boardProjectId and the legacy root projectId are board query context only. publicProjectId is returned public CLI metadata, not verified App identity; cwdMatches is a directory clue. Follow nextCursor for remaining pages and preserve archive/query/scope. The issue must belong to the selected board project. Does not read messages, bind or resume a chat; runtime status is not desktop live status.", inputSchema: { projectId: identifier, issueId: identifier.optional(), scope: z.enum(["directory", "local"]).optional(), query: z.string().trim().max(256).optional(), cursor: z.string().min(1).max(4096).optional(), archived: z.boolean().optional(), limit: z.number().int().min(1).max(50).optional() }, annotations: readOnly }, (input) => api({ path: `/api/local/native-sessions?${new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]))}` }));
++  mcp.registerTool("taskboard_list_conversations", { description: "Discover real saved conversation metadata through the official Codex App Server API across all model providers. Prefer an explicitly selected public project/list ID with scope project and publicProjectId; project/read verifies that identity before thread/list filters it. Never substitute the board or desktop App project ID. Default scope directory uses the configured directory or selected issue worktree; scope local explicitly searches across directories when saved cwd differs from sidebar placement. allPages:true follows every nextCursor from the supplied cursor to the end; limit is the per-page size. Results are deduplicated by real thread ID and include pagesRead, complete and the remaining cursor. Preserve query/archive/scope while paging. App sidebar membership remains unverified; the user confirms candidate membership separately from any task binding. boardProjectId and root projectId are board context only. Does not read message bodies, resume chats, update tasks or bind them; live:false.", inputSchema: { projectId: identifier, issueId: identifier.optional(), scope: z.enum(["directory", "local", "project"]).optional(), publicProjectId: identifier.optional(), allPages: z.boolean().optional(), query: z.string().trim().max(256).optional(), cursor: z.string().min(1).max(4096).optional(), archived: z.boolean().optional(), limit: z.number().int().min(1).max(50).optional() }, annotations: readOnly }, (input) => api({ path: `/api/local/native-sessions?${new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]))}` }));
+   mcp.registerTool("taskboard_verify_existing_binding", { description: "At the user's explicit request, publicly verify and migrate this issue's existing local chat binding with the current version. Preserve unverified bindings on failure and unknown native project/host fields as null.", inputSchema: { issueId: identifier, version, userConfirmed: z.literal(true) }, annotations: write }, ({ issueId, ...body }) => api({ path: `${taskPath(issueId)}/binding/verify`, method: "POST", body }));
+   mcp.registerTool("taskboard_unbind_conversation", { description: "Clear only this issue's native conversation association at the user's explicit request and current version. Preserve issue fields, comments and saved history.", inputSchema: { issueId: identifier, version, userConfirmed: z.literal(true) }, annotations: write }, ({ issueId, ...body }) => api({ path: `${taskPath(issueId)}/binding`, method: "POST", body: { ...body, clear: true } }));
+   mcp.registerTool("taskboard_get_persisted_execution", { description: "Read and save stored turn/result observations only for an explicitly verified bound local chat. This is not desktop live execution or task acceptance; refresh=false reads the saved snapshot without calling the native CLI.", inputSchema: { issueId: identifier, refresh: z.boolean().optional() }, annotations: readOnly }, ({ issueId, refresh }) => api({ path: `${taskPath(issueId)}/persisted-execution${refresh === undefined ? "" : `?refresh=${refresh}`}` }));
+diff --git a/integrations/codex-plugin/native-session-store.mjs b/integrations/codex-plugin/native-session-store.mjs
+index cb80ab5..13b40a9 100644
+--- a/integrations/codex-plugin/native-session-store.mjs
++++ b/integrations/codex-plugin/native-session-store.mjs
+@@ -11,7 +11,9 @@ const bindInput = z.object({ version, userConfirmed: z.literal(true), source: z.
+ const migrateInput = z.object({ version, userConfirmed: z.literal(true) }).strict();
+ const clearInput = migrateInput.extend({ clear: z.literal(true) });
+ const pageInput = z.object({ before: z.string().min(1).max(4_096).optional(), limit: z.coerce.number().int().min(1).max(50).optional() }).strict();
+-const listInput = z.object({ projectId: identifier, issueId: identifier.optional(), scope: z.enum(["directory", "local"]).default("directory"), query: z.string().trim().max(256).optional(), cursor: z.string().min(1).max(4_096).optional(),
++const listInput = z.object({ projectId: identifier, issueId: identifier.optional(), scope: z.enum(["directory", "local", "project"]).default("directory"), publicProjectId: identifier.optional(),
++  allPages: z.preprocess((value) => value === "true" ? true : value === "false" ? false : value, z.boolean().default(false)),
++  query: z.string().trim().max(256).optional(), cursor: z.string().min(1).max(4_096).optional(),
+   archived: z.preprocess((value) => value === "true" ? true : value === "false" ? false : value, z.boolean().default(false)), limit: z.coerce.number().int().min(1).max(50).optional(),
+ }).strict();
+ const itemsInput = pageInput.extend({ turnId: identifier });
+diff --git a/integrations/codex-plugin/native-sessions.mjs b/integrations/codex-plugin/native-sessions.mjs
+index db32266..c670b50 100644
+--- a/integrations/codex-plugin/native-sessions.mjs
++++ b/integrations/codex-plugin/native-sessions.mjs
+@@ -10,7 +10,7 @@ const conversationInput = z.object({ threadId: identifier, expectedCwd: z.string
+ const executionInput = z.object({ issueId: identifier }).strict();
+ const cursor = z.string().min(1).max(4_096).optional();
+ const pageLimit = z.number().int().min(1).max(50);
+-const listInput = z.object({ cwd: z.string().min(1), scope: z.enum(["directory", "local"]).default("directory"), query: z.string().trim().max(256).optional(), cursor, archived: z.boolean().default(false), limit: pageLimit.default(20) }).strict();
++const listInput = z.object({ cwd: z.string().min(1), scope: z.enum(["directory", "local", "project"]).default("directory"), publicProjectId: identifier.optional(), allPages: z.boolean().default(false), query: z.string().trim().max(256).optional(), cursor, archived: z.boolean().default(false), limit: pageLimit.default(20) }).strict();
+ const turnsInput = executionInput.extend({ before: cursor, limit: pageLimit.default(20) });
+ const turnMetadata = z.object({ id: identifier, status: z.string(), startedAt: z.number().nullable(), completedAt: z.number().nullable(), durationMs: z.number().nullable() }).strict();
+ const itemsInput = executionInput.extend({ turn: turnMetadata, before: cursor, limit: pageLimit.default(32) });
+@@ -222,23 +222,49 @@ export function createNativeSessions({ getBinding, executable, processEnv = proc
+     async listConversations(value) {
+       const input = parse(listInput, value);
+       if (!path.isAbsolute(input.cwd)) throw new ApiError(400, "WORKSPACE_NOT_CONFIGURED", "Configure the project's actual local directory before listing conversations");
++      if ((input.scope === "project") !== Boolean(input.publicProjectId)) throw new ApiError(400, "PUBLIC_PROJECT_SELECTION_REQUIRED", "Use scope project with an explicitly selected ID returned by the official project/list API");
+       const cwd = path.resolve(input.cwd);
+       return withClient(async (client) => {
+-        const response = await publicRequest(client, "thread/list", {
+-          ...(input.scope === "directory" ? { cwd } : {}),
+-          archived: input.archived, limit: input.limit, sortKey: "updated_at", sortDirection: "desc",
+-          // Some bundled clients apply the configured provider when this field is omitted.
+-          modelProviders: [],
+-          sourceKinds: ["cli", "vscode", "appServer"], useStateDbOnly: true,
+-          ...(input.cursor ? { cursor: input.cursor } : {}), ...(input.query ? { searchTerm: input.query } : {}),
+-        });
++        let publicProject = null;
++        if (input.scope === "project") {
++          const response = await publicRequest(client, "project/read", { projectId: input.publicProjectId });
++          if (response.project?.id !== input.publicProjectId) throw new ApiError(409, "NATIVE_PROJECT_ID_MISMATCH", "The official API did not return the selected public project identity");
++          publicProject = { id: response.project.id, name: response.project.name ?? null };
++        }
++        const threads = new Map();
++        const cursors = new Set();
++        let nextCursor = input.cursor ?? null;
++        let pagesRead = 0;
++        do {
++          if (nextCursor) {
++            if (cursors.has(nextCursor)) throw new ApiError(409, "NATIVE_CONVERSATION_CURSOR_REPEATED", "The official API repeated a cursor before completing the query");
++            cursors.add(nextCursor);
++          }
++          const response = await publicRequest(client, "thread/list", {
++            ...(input.scope === "directory" ? { cwd } : {}),
++            ...(publicProject ? { projectId: publicProject.id } : {}),
++            archived: input.archived, limit: input.limit, sortKey: "updated_at", sortDirection: "desc",
++            // Explicitly include every provider, including custom providers.
++            modelProviders: [],
++            sourceKinds: ["cli", "vscode", "appServer"], useStateDbOnly: true,
++            ...(nextCursor ? { cursor: nextCursor } : {}), ...(input.query ? { searchTerm: input.query } : {}),
++          });
++          for (const thread of response.data ?? []) {
++            if (input.scope === "directory" && !sameDirectory(thread.cwd, cwd)) continue;
++            if (!threads.has(thread.id)) threads.set(thread.id, thread);
++          }
++          pagesRead += 1;
++          nextCursor = response.nextCursor ?? null;
++        } while (input.allPages && nextCursor);
+         return { source: SOURCE, live: false, cwd, scope: input.scope,
+           observedAt: new Date().toISOString(), archived: input.archived, query: input.query ?? null,
++          publicProject, pagesRead, complete: nextCursor === null,
+           appProjectMembershipVerified: false, timeUnit: "unix-seconds", limitations: [...limitations,
+             "Directory matches are metadata clues, not verified Codex App sidebar project membership.",
+-            "This page covers the selected archive, title and directory scope; follow nextCursor for more results.",
++            "Public project IDs are verified only against the official public API, not desktop App project IDs. Candidate membership requires user confirmation.",
++            "Results cover the selected archive, title and scope. complete means nextCursor is null, not that every desktop sidebar chat was enumerated.",
+           ],
+-          threads: (response.data ?? []).filter((thread) => input.scope === "local" || sameDirectory(thread.cwd, cwd)).map((thread) => ({
++          threads: [...threads.values()].map((thread) => ({
+             id: thread.id, cwd: thread.cwd, name: typeof thread.name === "string" ? thread.name : null,
+             modelProvider: typeof thread.modelProvider === "string" ? thread.modelProvider : null,
+             source: typeof thread.source === "string" ? thread.source : null,
+@@ -246,7 +272,7 @@ export function createNativeSessions({ getBinding, executable, processEnv = proc
+             cwdMatches: sameDirectory(thread.cwd, cwd),
+             createdAt: thread.createdAt ?? null, updatedAt: thread.updatedAt ?? null,
+             status: thread.status?.type ? { type: thread.status.type } : null, archived: input.archived,
+-          })), nextCursor: response.nextCursor ?? null,
++          })), nextCursor,
+         };
+       });
+     },
+diff --git a/integrations/codex-plugin/plugin.json b/integrations/codex-plugin/plugin.json
+index 97ee82b..e57807f 100644
+--- a/integrations/codex-plugin/plugin.json
++++ b/integrations/codex-plugin/plugin.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+   "name": "dashi-taskboard-official",
+-  "version": "0.4.9",
++  "version": "0.4.10",
+   "description": "Local Dashi Taskboard through official MCP Apps and UI extensions.",
+   "extensions": {
+     "com.openai": {
+diff --git a/integrations/codex-plugin/skills/official-codex-workflows/SKILL.md b/integrations/codex-plugin/skills/official-codex-workflows/SKILL.md
+index 626fbf0..5561102 100644
+--- a/integrations/codex-plugin/skills/official-codex-workflows/SKILL.md
++++ b/integrations/codex-plugin/skills/official-codex-workflows/SKILL.md
+@@ -35,6 +35,8 @@ For a metadata-only selection list, do not read chat contents. Official `list_th
+ 
+ Wait for the user to identify the native chats to inspect, then retrieve their actual IDs and available content through official `list_threads`/`read_thread`. Do not discover scope by guessing that every chat in the same folder concerns this issue. List the real chat-to-issue correspondences and requested changes; only import the changes the user actually asks for. Read each target issue and all comments, retain its current version, and use `taskboard_create_issue` or `taskboard_update_issue` as appropriate. Preserve existing IDs and bindings. Use an actual native result as evidence, never an independent test engine or an old UI activity counter. An assistant's completion claim does not authorize marking a board issue done; explicit user acceptance remains required. Do not send messages to inspected chats unless separately authorized.
+ 
++Conversation discovery uses official APIs only. If the user explicitly selects a public `project/list` ID, query `taskboard_list_conversations` with `scope:project` and that `publicProjectId`; the reader verifies it with `project/read` before passing it to `thread/list`. Do not substitute an App or board project ID or infer a mapping from the name or path. Use `scope:local` for requested cross-directory supplementation, without a cwd or project filter. `allPages:true` follows every official cursor to the end, deduplicates by real conversation ID, and reports `pagesRead`, `complete`, observation time and any remaining cursor. `limit` is the per-page size. Without `allPages`, continue with `nextCursor` and deduplicate accumulated pages by ID. Completeness applies only to the selected query scope, not the desktop sidebar. Candidate membership requires explicit user confirmation; selecting or confirming a candidate does not read its messages, update an issue or authorize binding. Keep App membership unverified even after a user confirms a candidate.
++
+ ## Continue saved board AI history in native chat
+ 
+ Read `taskboard_get_ai_history` for the exact issue and `taskboard_get_ai_history_events` for the selected real stored history ID. Show the relevant saved context and its source to the user, then wait for their specific continuation instruction. Old saved run labels/events are historical snapshots, not current desktop execution. Preserve the stored history; do not launch the old floating AI service, overwrite another native chat, auto-send a prepared draft or bind the new draft. If continuation in an existing native chat is explicitly requested, verify its real official ID and use the supported native opening workflow.
+diff --git a/web/src/api.ts b/web/src/api.ts
+index c5176e8..e9c9ba4 100644
+--- a/web/src/api.ts
++++ b/web/src/api.ts
+@@ -595,10 +595,12 @@ export function getManagedWorktreeAssociation(taskId: string, signal?: AbortSign
+   );
+ }
+ 
+-export function listNativeConversations(projectId: string, options: { query?: string; scope?: "directory" | "local"; cursor?: string; issueId?: string } = {}) {
++export function listNativeConversations(projectId: string, options: { query?: string; scope?: "directory" | "local" | "project"; publicProjectId?: string; allPages?: boolean; cursor?: string; issueId?: string } = {}) {
+   const query = new URLSearchParams({ projectId, archived: "false" });
+   if (options.issueId) query.set("issueId", options.issueId);
+   if (options.scope) query.set("scope", options.scope);
++  if (options.publicProjectId) query.set("publicProjectId", options.publicProjectId);
++  if (options.allPages !== undefined) query.set("allPages", String(options.allPages));
+   if (options.query) query.set("query", options.query);
+   if (options.cursor) query.set("cursor", options.cursor);
+   return request<import("./components/OfficialSessionBindingDialog").OfficialConversationList>(`/api/local/native-sessions?${query}`);
+diff --git a/web/src/components/OfficialSessionBindingDialog.css b/web/src/components/OfficialSessionBindingDialog.css
+index c358e48..ab18aef 100644
+--- a/web/src/components/OfficialSessionBindingDialog.css
++++ b/web/src/components/OfficialSessionBindingDialog.css
+@@ -58,6 +58,12 @@
+   grid-column: 1 / -1;
+ }
+ 
++.official-session-binding-search-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++}
++
+ .official-session-binding-fields {
+   display: grid;
+   grid-template-columns: max-content minmax(0, 1fr);
+diff --git a/web/src/components/OfficialSessionBindingDialog.tsx b/web/src/components/OfficialSessionBindingDialog.tsx
+index d3e63f7..c08cab8 100644
+--- a/web/src/components/OfficialSessionBindingDialog.tsx
++++ b/web/src/components/OfficialSessionBindingDialog.tsx
+@@ -28,7 +28,10 @@ export interface OfficialConversationList {
+   live: false;
+   projectId: string;
+   boardProjectId: string;
+-  scope: "directory" | "local";
++  scope: "directory" | "local" | "project";
++  publicProject: { id: string; name: string | null } | null;
++  pagesRead: number;
++  complete: boolean;
+   cwd: string;
+   observedAt: string;
+   archived: boolean;
+@@ -47,7 +50,7 @@ export interface OfficialSessionBindingDialogProps {
+   taskIdentifier: string;
+   taskVersion: number;
+   onVerify: (threadId: string) => Promise<OfficialSessionVerification>;
+-  onListConversations?: (input: { query: string; scope: "directory" | "local"; cursor?: string }) => Promise<OfficialConversationList>;
++  onListConversations?: (input: { query: string; scope: "directory" | "local"; allPages?: boolean; cursor?: string }) => Promise<OfficialConversationList>;
+   onBind: (verified: OfficialSessionVerification | null) => Promise<void>;
+   onClose: () => void;
+   onError?: (message: string) => void;
+@@ -69,6 +72,7 @@ export function OfficialSessionBindingDialog({
+   const [conversationQuery, setConversationQuery] = useState("");
+   const [conversationScope, setConversationScope] = useState<"directory" | "local">("directory");
+   const [conversations, setConversations] = useState<{ query: string; scope: "directory" | "local"; data: OfficialConversationList } | null>(null);
++  const [candidate, setCandidate] = useState<OfficialConversationList["threads"][number] | null>(null);
+   const [listError, setListError] = useState<string | null>(null);
+   const sameConversationSearch = conversations?.query === conversationQuery.trim() && conversations.scope === conversationScope;
+   const result = selection?.result;
+@@ -83,16 +87,23 @@ export function OfficialSessionBindingDialog({
+     onError?.(message);
+   }
+ 
+-  async function listConversations(cursor?: string) {
++  async function listConversations(cursor?: string, allPages = false, scopeOverride?: "local") {
+     if (!onListConversations) return;
+     if (cursor && !sameConversationSearch) return;
+     const query = cursor && conversations ? conversations.query : conversationQuery.trim();
+-    const scope = cursor && conversations ? conversations.scope : conversationScope;
++    const scope = scopeOverride ?? (cursor && conversations ? conversations.scope : conversationScope);
++    if (scopeOverride) setConversationScope(scopeOverride);
+     setBusy("list");
+     setListError(null);
++    setCandidate(null);
+     try {
+-      const data = await onListConversations({ query, scope, ...(cursor ? { cursor } : {}) });
+-      setConversations({ query, scope, data });
++      const data = await onListConversations({ query, scope, allPages, ...(cursor ? { cursor } : {}) });
++      const previous = cursor && conversations ? conversations.data : null;
++      const unique = new Map<string, OfficialConversationList["threads"][number]>();
++      for (const thread of [...(previous?.threads ?? []), ...data.threads]) {
++        if (!unique.has(thread.id)) unique.set(thread.id, thread);
++      }
++      setConversations({ query, scope, data: { ...data, threads: [...unique.values()], pagesRead: (previous?.pagesRead ?? 0) + data.pagesRead } });
+     } catch (cause) {
+       const message = cause instanceof Error ? cause.message : String(cause);
+       setListError(message); onError?.(message);
+@@ -175,16 +186,19 @@ export function OfficialSessionBindingDialog({
+         {onListConversations && <section className="official-session-binding-picker">
+           <button className="button secondary" type="button" disabled={busy !== null} onClick={() => setPickerOpen((current) => !current)}>{text("查询保存会话", "Find saved conversations")}</button>
+           {pickerOpen && <>
+-            <p className="official-session-binding-note">{text("当前目录查询项目配置目录或所选工作树；本机全部目录可查找保存在其他目录的会话。两种范围均覆盖全部模型服务商，每次查询一页未归档交互会话。", "Current directory searches the project's configured directory or selected worktree; all local directories also finds conversations saved elsewhere. Both scopes include all model providers and return one page of unarchived interactive conversations.")}</p>
+-            <p className="official-session-binding-note">{text("本机全部目录的结果不能代表当前项目的成员。App 侧栏项目归属尚未核验，目录匹配仅作线索。选择只填入 ID，仍需核验并确认关联。", "Results from all local directories do not identify members of the current project. App sidebar project membership is unverified; directory matches are only clues. Selecting a conversation only fills its ID; verification and explicit association are still required.")}</p>
++            <p className="official-session-binding-note">{text("通过官方会话 API 查询未归档会话，覆盖全部模型服务商。当前目录未找到目标时，可跨目录补查；完整查询会读取全部分页并按会话 ID 去重。", "Search unarchived conversations across all model providers through the official conversation API. Search across directories when the target is missing; a complete query reads every page and deduplicates by conversation ID.")}</p>
++            <p className="official-session-binding-note">{text("目录匹配仅作线索，候选归属由你确认。确认只填入会话 ID，不读取正文、不保存任务关联。", "Directory matches are only clues; you confirm candidate membership. Confirmation only fills the conversation ID, without reading messages or saving a task association.")}</p>
+             <form className="official-session-binding-form official-session-binding-search" onSubmit={(event) => { event.preventDefault(); void listConversations(); }}>
+               <fieldset disabled={busy !== null}>
+-                <label className="official-session-binding-scope"><span>{text("查询范围", "Search scope")}</span><select value={conversationScope} onChange={(event) => setConversationScope(event.target.value as "directory" | "local")}>
++                <label className="official-session-binding-scope"><span>{text("查询范围", "Search scope")}</span><select value={conversationScope} onChange={(event) => { setConversationScope(event.target.value as "directory" | "local"); setCandidate(null); }}>
+                   <option value="directory">{text("当前目录", "Current directory")}</option>
+                   <option value="local">{text("本机全部目录", "All local directories")}</option>
+                 </select></label>
+-                <label><span>{text("按会话名称查询（可留空）", "Conversation name query (optional)")}</span><input value={conversationQuery} onChange={(event) => setConversationQuery(event.target.value)} /></label>
+-                <button className="button secondary" type="submit">{busy === "list" ? text("查询中…", "Searching…") : text("查询", "Search")}</button>
++                <label><span>{text("按会话名称查询（可留空）", "Conversation name query (optional)")}</span><input maxLength={256} value={conversationQuery} onChange={(event) => { setConversationQuery(event.target.value); setCandidate(null); }} /></label>
++                <div className="official-session-binding-search-actions">
++                  <button className="button secondary" type="submit">{busy === "list" ? text("查询中…", "Searching…") : text("查询一页", "Search one page")}</button>
++                  <button className="button secondary" type="button" onClick={() => void listConversations(undefined, true)}>{text("查询全部分页", "Search all pages")}</button>
++                </div>
+               </fieldset>
+             </form>
+             {listError && <p className="official-session-binding-error" role="alert">{listError}</p>}
+@@ -193,17 +207,16 @@ export function OfficialSessionBindingDialog({
+               <p className="official-session-binding-note">{text("对照目录：", "Reference directory: ")}{conversations.data.cwd}</p>
+               <p>{text("来源：", "Source: ")}{conversations.data.source}</p>
+               <p className="official-session-binding-note">{text("读取时间：", "Observed: ")}{new Date(conversations.data.observedAt).toLocaleString(locale)}</p>
+-              <p className="official-session-binding-note">{text(`当前页 ${conversations.data.threads.length} 条`, `${conversations.data.threads.length} conversations on this page`)} · {conversations.data.nextCursor ? text("还有下一页", "More pages available") : text("已到本查询末页", "End of this query")}</p>
++              <p className="official-session-binding-note" role="status">{text(`已读取 ${conversations.data.pagesRead} 页，去重后 ${conversations.data.threads.length} 条`, `${conversations.data.pagesRead} pages read, ${conversations.data.threads.length} unique conversations`)} · {conversations.data.complete ? text("本查询分页已全部读取", "All pages of this query read") : text("还有下一页", "More pages available")}</p>
+               <p className="official-session-binding-note">{text("App 侧栏项目归属：未核验。", "App sidebar project membership: unverified.")}</p>
+               {!sameConversationSearch && <p className="official-session-binding-note">{text("查询条件已变化，请重新查询；当前仍展示上次查询结果。", "Search options changed. Search again; the displayed results are from the previous query.")}</p>}
+               {conversations.data.threads.length === 0 && <p className="official-session-binding-note">{text("当前页没有匹配的会话。", "No matching conversation on this page.")}</p>}
+               <ul className="official-session-binding-conversations">{conversations.data.threads.map((thread) => <li key={thread.id}>
+-                <button type="button" disabled={busy !== null} onClick={() => {
+-                  setThreadId(thread.id); setSelection(null); setConfirmation(null); setError(null);
+-                  setNotice(text("已填入选中会话 ID，请继续核验。", "The selected conversation ID is filled in. Verify it to continue."));
+-                  setPickerOpen(false);
++                <button type="button" disabled={busy !== null || !sameConversationSearch} aria-pressed={candidate?.id === thread.id} onClick={() => {
++                  setCandidate(thread); setSelection(null); setConfirmation(null); setError(null); setNotice(null);
+                 }}>
+                   <strong>{thread.name || thread.id}</strong>
++                  <span>{text("项目归属待你确认", "Project membership awaits your confirmation")}</span>
+                   <code>{thread.id}</code>
+                   <span>{thread.cwd}</span>
+                   <span>{thread.cwdMatches ? text("目录线索：与对照目录一致", "Directory clue: matches the reference directory") : text("目录线索：与对照目录不同", "Directory clue: differs from the reference directory")}</span>
+@@ -212,7 +225,22 @@ export function OfficialSessionBindingDialog({
+                   {thread.updatedAt !== null && <time>{text("更新于：", "Updated: ")}{new Date(thread.updatedAt * 1000).toLocaleString(locale)}</time>}
+                 </button>
+               </li>)}</ul>
+-              {conversations.data.nextCursor && <button className="button secondary" type="button" disabled={busy !== null || !sameConversationSearch} onClick={() => void listConversations(conversations.data.nextCursor!)}>{text("下一页会话", "Next page of conversations")}</button>}
++              {candidate && sameConversationSearch && <section className="official-session-binding-result" aria-label={text("确认候选归属", "Confirm candidate membership")}>
++                <h3>{text("确认候选归属", "Confirm candidate membership")}</h3>
++                <p>{candidate.name || candidate.id}</p>
++                <p><code>{candidate.id}</code><br />{candidate.cwd}</p>
++                <p className="official-session-binding-note">{text("请确认这是当前项目的会话。此操作只填入 ID；正文读取和任务关联仍需分别操作。", "Confirm that this conversation belongs to the current project. This only fills the ID; reading messages and associating a task remain separate actions.")}</p>
++                <button className="button secondary" type="button" disabled={busy !== null} onClick={() => {
++                  setThreadId(candidate.id); setSelection(null); setConfirmation(null); setError(null); setCandidate(null);
++                  setNotice(text("你已确认候选归属并填入会话 ID，尚未读取正文或保存关联。", "You confirmed candidate membership and filled the conversation ID. No messages were read and no association was saved."));
++                  setPickerOpen(false);
++                }}>{text("确认归属并填入 ID", "Confirm membership and fill ID")}</button>
++              </section>}
++              {conversations.data.nextCursor && <div className="official-session-binding-search-actions">
++                <button className="button secondary" type="button" disabled={busy !== null || !sameConversationSearch} onClick={() => void listConversations(conversations.data.nextCursor!)}>{text("加载下一页", "Load next page")}</button>
++                <button className="button secondary" type="button" disabled={busy !== null || !sameConversationSearch} onClick={() => void listConversations(conversations.data.nextCursor!, true)}>{text("读取剩余全部分页", "Read all remaining pages")}</button>
++              </div>}
++              {conversationScope === "directory" && <button className="button secondary" type="button" disabled={busy !== null} onClick={() => void listConversations(undefined, true, "local")}>{text("跨目录补查全部分页", "Search all pages across directories")}</button>}
+             </>}
+           </>}
+         </section>}
