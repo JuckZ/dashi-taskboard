@@ -1,0 +1,147 @@
+.official-session-binding-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+
+.official-session-binding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.official-session-binding-header h2 {
+  margin: 0;
+}
+
+.official-session-binding-dialog p {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.official-session-binding-dialog .official-session-binding-note {
+  margin-top: 7px;
+}
+
+.official-session-binding-existing,
+.official-session-binding-result {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: var(--border-hairline) solid var(--border);
+}
+
+.official-session-binding-dialog h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 590;
+}
+
+.official-session-binding-form fieldset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.official-session-binding-form label {
+  min-width: 0;
+}
+
+.official-session-binding-search .official-session-binding-scope {
+  grid-column: 1 / -1;
+}
+
+.official-session-binding-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.official-session-binding-fields dt {
+  color: var(--text-secondary);
+}
+
+.official-session-binding-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.official-session-binding-dialog code {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.official-session-binding-dialog .official-session-binding-error {
+  margin-top: 10px;
+  color: var(--danger);
+}
+
+.official-session-binding-dialog .official-session-binding-notice {
+  margin-top: 10px;
+  color: var(--success);
+}
+
+.official-session-binding-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.official-session-binding-footer p {
+  flex-basis: 100%;
+}
+
+.official-session-binding-picker {
+  margin-top: 16px;
+}
+
+.official-session-binding-conversations {
+  display: grid;
+  gap: 7px;
+  max-height: 280px;
+  padding: 0;
+  margin: 12px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.official-session-binding-conversations button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 10px;
+  border: var(--border-hairline) solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.official-session-binding-conversations button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.official-session-binding-conversations strong {
+  color: var(--text-primary);
+  font-weight: 590;
+}
