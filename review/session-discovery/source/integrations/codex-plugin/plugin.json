@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dashi-taskboard-official",
+  "version": "0.4.9",
+  "description": "Local Dashi Taskboard through official MCP Apps and UI extensions.",
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "Dashi Taskboard",
+        "shortDescription": "本地任务看板与原生对话",
+        "developerName": "Dashi Taskboard",
+        "category": "Productivity",
+        "composerIcon": "./assets/taskboard.svg",
+        "composerIconDark": "./assets/taskboard-dark.svg",
+        "logo": "./assets/taskboard.svg",
+        "logoDark": "./assets/taskboard-dark.svg",
+        "capabilities": ["Interactive", "Read", "Write"]
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "candidate": "51c3075b3d945a82e51922a338305551a5db4086",
+  "files": {
+    "integrations/codex-plugin/business-tools.mjs": "ec6159f589e5c2e107a793ee0d7d371e73a899c868503991a81e435a59363ad5",
+    "integrations/codex-plugin/native-session-store.mjs": "25d9e63fdb5032bdebc6fae635dec3e2798cb156cc7dc20a59a849b4b7d2f4a2",
+    "integrations/codex-plugin/native-sessions.mjs": "bb29b75fbbb23ce50b6ee348dcf792343ac076db7490ae16ee135c883628019d",
+    "integrations/codex-plugin/plugin.json": "4bde227ff9c7cbc17e494b324631fd27eede30cb10dea86b1a572c27d7b49eee",
+    "integrations/codex-plugin/skills/official-codex-workflows/SKILL.md": "d2278f3d2b260297f2db9c4eefba9f84e6d3ff660bf0f98afd51f74c41d4720d",
+    "web/src/api.ts": "747290cd375f6cafaf2dee0fcf12afff604b91b7e6f04497ef56f5ead0f92378",
+    "web/src/components/OfficialSessionBindingDialog.css": "fd2fc6e93444dbba8b8a43a1bfd7c8db2248bbfa3e5ed724af19dc2fee34c19e",
+    "web/src/components/OfficialSessionBindingDialog.tsx": "5e3547609954510fb72051789e42f53cc1423b5bcae1c8510cde57da20f62607"
+  }
+}
